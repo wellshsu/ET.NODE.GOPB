@@ -2,15 +2,15 @@ import * as rd from "rd"
 import { Helper } from "./Helper"
 import * as child_process from "child_process"
 import * as path from "path"
-
+setTimeout(() => { }, 2000) // 延时退出，查看日志
 process.title = "gopb"
 
 const LEFT_TAG = "<tag>"
 const RIGHT_TAG = "</tag>"
 
 let rootDir = path.resolve(".")
-// rootDir = "D:/DEV/HSU/EP.GO.ESVR.SRC/test/shared/protos"
-Helper.Log("rootDir: {0}", rootDir)
+// rootDir = "D:/DEV/HSU/EP.GO.ESVR.SRC/test/shared/proto"
+Helper.Log("working root: {0}", rootDir)
 
 // 清理文件夹
 function cleanDir() {
@@ -37,13 +37,20 @@ function compileProto() {
                     Helper.LogError(err)
                 } else {
                     Helper.Log(stdout)
-                    let name = path.basename(f)
-                    let from = path.normalize(f + ".pb.go")
-                    let to = path.normalize(path.join(rootCwd, name + ".pb.go"))
-                    if (from != to) {
-                        Helper.CopyFile(from, to)
-                        Helper.Log("{0} || {1}", from, to)
-                        Helper.DeleteFile(f + ".pb.go")
+                    let name = path.basename(f).replace(path.extname(f), "")
+                    let pbgo = path.join(path.dirname(f), name + ".pb.go")
+                    if (Helper.HasFile(pbgo)) {
+                        let nctt = ""
+                        let lines = Helper.OpenFile(pbgo).toString().split("\n")
+                        for (let i = 0; i < lines.length; i++) {
+                            let line = lines[i]
+                            if (line.indexOf("protobuf") > 0 && line.indexOf(",rep") > 0 && lines.indexOf(",omitempty")) {
+                                line = line.replace(",omitempty", "")
+                            }
+                            nctt += line + "\n"
+                        }
+                        Helper.SaveFile(pbgo, nctt)
+                        Helper.Log("converted: {0}", pbgo)
                     }
                 }
             })
@@ -174,12 +181,10 @@ function convertHeader() {
             nlines.push("//--       DO NOT EDIT      --//")
             nlines.push("package " + pkg)
 
-            // nlines.push("type _EnumMeta struct {")
-            // nlines.push("\tType  reflect.Type")
-            // nlines.push("\tValue reflect.Value")
-            // nlines.push("\tIS    map[int]string")
-            // nlines.push("\tSI    map[string]int")
-            // nlines.push("}")
+            nlines.push("import (")
+            nlines.push("\t\"reflect\"")
+            nlines.push("\t\"strconv\"")
+            nlines.push(")")
 
             for (let i = 0; i < enums.length; i++) {
                 let ele = enums[i]
@@ -192,7 +197,7 @@ function convertHeader() {
             nlines.push("\tenums := make([][]interface{}, 0)")
             for (let i = 0; i < enums.length; i++) {
                 let ele = enums[i]
-                nlines.push("enums = append(enums, []interface{}{")
+                nlines.push("\tenums = append(enums, []interface{}{")
                 nlines.push(Helper.Format("\t\treflect.TypeOf({0}),", ele.Name))
                 nlines.push(Helper.Format("\t\treflect.ValueOf(&{0}).Elem(),", ele.Name))
                 nlines.push(Helper.Format("\t\t{0}IS,", ele.Name))
@@ -234,7 +239,7 @@ function convertHeader() {
                 nctt += nlines[i] + "\n"
             }
             Helper.SaveFile(gFile, nctt)
-
+            Helper.Log("converted: {0}", gFile)
             child_process.exec(Helper.Format("goimports -l -w {0}", gFile), Helper.ExecOpt(rootDir))
         })
     } else {
